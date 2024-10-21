@@ -270,17 +270,17 @@ function renderTriangles() {
     gl.uniform3fv(upUniform, up); // feed
     
     // eye vector
-    gl.uniform1f(leftUniform, left); // feed
+    gl.uniform1f(leftUniform, WIN_LEFT); // feed
     // right vector
-    gl.uniform1f(rightUniform, right); // feed
+    gl.uniform1f(rightUniform, WIN_RIGHT); // feed
     // bottom value
-    gl.uniform1f(bottomUniform, bottom); // feed
+    gl.uniform1f(bottomUniform, WIN_BOTTOM); // feed
     // top value
-    gl.uniform1f(topUniform, top); // feed
+    gl.uniform1f(topUniform, WIN_TOP); // feed
     // near value
-    gl.uniform1f(nearUniform, near); // feed
+    gl.uniform1f(nearUniform, 0); // feed
     // far value
-    gl.uniform1f(farUniform, far); // feed
+    gl.uniform1f(farUniform, 1); // feed
 
     gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
 } // end render triangles
