@@ -17,14 +17,14 @@ var triangleBuffer; // this contains indices into vertexBuffer in triples
 var triBufferSize = 0; // the number of indices in the triangle buffer
 var altPosition; // flag indicating whether to alter vertex positions
 var eye; // vector representing eye location
-var lookat; // vector representing eye look direction
-var lookatDist; // value representing distance from eye to window
+var center; // vector representing eye look direction
+var up; // value representing distance from eye to window
 var vertexPositionAttrib; // where to put position for vertex shader
 var vertexColorAttrib; // where to put color for vertex shader
 var altPositionUniform; // where to put altPosition flag for vertex shader
 var eyeUniform; // where to put eye vector for vertex shader
-var lookatUniform; // where to put lookat flag for vertex shader
-var lookatDistUniform; // where to put lookatDist value for vertex shader
+var centerUniform; // where to put center flag for vertex shader
+var upUniform; // where to put up value for vertex shader
 
 
 // ASSIGNMENT HELPER FUNCTIONS
@@ -141,17 +141,15 @@ function setupShaders() {
         varying highp vec3 color;
         uniform bool altPosition;
         uniform highp vec3 eye;
-        uniform highp vec3 lookat;
-        uniform float lookatDist;
+        uniform highp vec3 center;
+        uniform highp vec3 up;
 
         void main(void) {
             vec3 alteredPosition = vertexPosition;
             if(altPosition)
                 alteredPosition += vec3(-0.0, -0.0, 1.0);
-    
-            float t = 1.0 + lookatDist * dot(lookat, lookat) / dot(lookat, eye - alteredPosition);
-            vec3 newPosition = eye * t + alteredPosition * (1.0 - t);
-            
+
+            vec3 newPosition = matrix4.lookAt({eye, center, up}).transformAsPoint(alteredPosition)
             gl_Position = vec4(newPosition, 1.0); // use the altered position
             color = vertexColor;
         }
@@ -194,10 +192,10 @@ function setupShaders() {
                     gl.getUniformLocation(shaderProgram, "altPosition");
                 eyeUniform = // get pointer to eye vector
                     gl.getUniformLocation(shaderProgram, "eye");
-                lookatUniform = // get pointer to lookat vector
-                    gl.getUniformLocation(shaderProgram, "lookat");
-                lookatDistUniform = // get pointer to lookatDist value
-                    gl.getUniformLocation(shaderProgram, "lookatDist");
+                centerUniform = // get pointer to center vector
+                    gl.getUniformLocation(shaderProgram, "center");
+                upUniform = // get pointer to up value
+                    gl.getUniformLocation(shaderProgram, "up");
             } // end if no shader program link errors
         } // end if no compile errors
     } // end try 
@@ -211,8 +209,8 @@ function setupShaders() {
         setTimeout(alterPosition, 2000);
     }, 2000); // switch flag value every 2 seconds
     eye = [0.5,0.5,-0.5];
-    lookat = [0,0,1];
-    lookatDist = 0.5;
+    center = [0.5,0.5,0];
+    up = [0,1,0];
 } // end setup shaders
 var bgColor = 0;
 // render the loaded model
@@ -234,10 +232,10 @@ function renderTriangles() {
     gl.uniform1i(altPositionUniform, altPosition); // feed
     // eye vector
     gl.uniform3fv(eyeUniform, eye); // feed
-    // lookat vector
-    gl.uniform3fv(lookatUniform, lookat); // feed
-    // lookatDist value
-    gl.uniform1f(lookatDistUniform, lookatDist); // feed
+    // center vector
+    gl.uniform3fv(centerUniform, center); // feed
+    // up value
+    gl.uniform1f(upUniform, up); // feed
 
     gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
 } // end render triangles
