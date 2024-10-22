@@ -6,7 +6,7 @@ const WIN_LEFT = 0; const WIN_RIGHT = 1;  // default left and right x coords in 
 const WIN_BOTTOM = 0; const WIN_TOP = 1;  // default top and bottom y coords in world space
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; // triangles file loc
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
-//const INPUT_SPHERES_URL = "https://ncsucgclass.github.io/prog3/spheres.jsonlookat"; // spheres file loc
+//const INPUT_SPHERES_URL = "https://ncsucgclass.github.io/prog3/spheres.json"; // spheres file loc
 var Eye = new vec4.fromValues(0.5,0.5,-0.5,1.0); // default eye position in world space
 
 /* webgl globals */
@@ -16,21 +16,17 @@ var colorBuffer; // this contains color values in triples
 var triangleBuffer; // this contains indices into vertexBuffer in triples
 var triBufferSize = 0; // the number of indices in the triangle buffer
 var altPosition; // flag indicating whether to alter vertex positions
-var lookAtMatrix;
-var perspectiveMatrix;
 var eye; // vector representing eye location
-var center; // vector representing eye look direction
-var up; // value representing distance from eye to window
+var lookat; // vector representing eye look direction
+var lookatDist; // value representing distance from eye to window
 var vertexPositionAttrib; // where to put position for vertex shader
 var vertexColorAttrib; // where to put color for vertex shader
 var altPositionUniform; // where to put altPosition flag for vertex shader
-
-var lookAtUniform;
 var eyeUniform; // where to put eye vector for vertex shader
-var centerUniform; // where to put center flag for vertex shader
-var upUniform; // where to put up value for vertex shader
+var lookatUniform; // where to put lookat flag for vertex shader
+var lookatDistUniform; // where to put lookatDist value for vertex shader
 
-var perspectiveUniform;
+var windowDistUniform; // where to put windowDist value for vertex shader
 var leftUniform; // where to put left value for vertex shader
 var rightUniform; // where to put right value for vertex shader
 var bottomUniform; // where to put bottom value for vertex shader
@@ -151,20 +147,34 @@ function setupShaders() {
         attribute vec3 vertexPosition;
         attribute vec3 vertexColor;
         varying highp vec3 color;
-        uniform bool altPosition;
-
-        uniform highp mat4 lookAt;
-        uniform highp mat4 perspective;
+        uniform highp vec3 eye;
+        uniform highp vec3 lookat;
+        uniform float windowDist;
+        uniform float left;
+        uniform float right;
+        uniform float bottom;
+        uniform float top;
+        uniform float near;
+        uniform float far;
 
         void main(void) {
-            vec3 alteredPosition = vertexPosition;
-                alteredPosition += vec3(-0.0, -0.0, 0.0);
+            // Perspective projection transform points onto a plane windowDist units ahead of the eye.
+            vec3 relativePosition = vertexPosition - eye;
+            float distAlongLookat = dot(lookat, relativePosition) / dot(lookat, lookat);
+            vec3 projectedPosition = relativePosition / distAlongLookat * windowDist;
 
-            gl_Position = perspective * lookAt * vec4(alteredPosition, 1.0); // use the altered position
+            // Frustum clipping: take the rectangle [left,right] [bottom,top] from the projected plane, where the eye is looking at (0,0).
+            // Stretch this rectangle onto the canvas. Also setting the depth here for near/far clipping.
+            vec3 clippedPosition = vec3(
+                (projectedPosition[0] - left) / (right - left),
+                (projectedPosition[1] - bottom) / (top - bottom),
+                (distAlongLookat - near) / (far - near)
+            ) * 2.0 - 1.0;
+            
+            gl_Position = vec4(clippedPosition, 1.0); // use the altered position
             color = vertexColor;
         }
     `;
-    //vec3 newPosition = lookAt(left,right,bottom,top,near,far).transformAsPoint(alteredPosition)
     
     try {
         // console.log("fragment shader: "+fShaderCode);
@@ -201,18 +211,13 @@ function setupShaders() {
                 gl.enableVertexAttribArray(vertexColorAttrib); // input to shader from array
                 altPositionUniform = // get pointer to altPosition flag
                     gl.getUniformLocation(shaderProgram, "altPosition");
-
-                lookAtUniform =
-                    gl.getUniformLocation(shaderProgram, "lookAt");
                 eyeUniform = // get pointer to eye vector
                     gl.getUniformLocation(shaderProgram, "eye");
-                centerUniform = // get pointer to center vector
-                    gl.getUniformLocation(shaderProgram, "center");
-                upUniform = // get pointer to up value
-                    gl.getUniformLocation(shaderProgram, "up");
+                lookatUniform = // get pointer to lookat vector
+                    gl.getUniformLocation(shaderProgram, "lookat");
 
-                perspectiveUniform =
-                    gl.getUniformLocation(shaderProgram, "perspective");
+                windowDistUniform = // get pointer to windowDist value
+                    gl.getUniformLocation(shaderProgram, "windowDist");
                 leftUniform = // get pointer to left value
                     gl.getUniformLocation(shaderProgram, "left");
                 rightUniform = // get pointer to right value
@@ -238,12 +243,8 @@ function setupShaders() {
         setTimeout(alterPosition, 2000);
     }, 2000); // switch flag value every 2 seconds
     eye = [0.5,0.5,-0.5];
-    center = [0.5,0.5,0];
-    up = [0,1,0];
-    lookAtMatrix = mat4.create();
-    mat4.lookAt(lookAtMatrix, eye, center, up);
-    perspectiveMatrix = mat4.create();
-    mat4.frustum(perspectiveMatrix, WIN_LEFT, WIN_RIGHT, WIN_BOTTOM, WIN_TOP, 0.0, 1.0);
+    lookat = [0,0,1];
+    lookatDist = 0.5;
 } // end setup shaders
 var bgColor = 0;
 // render the loaded model
@@ -263,29 +264,25 @@ function renderTriangles() {
     gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
     // altPosition boolean
     gl.uniform1i(altPositionUniform, altPosition); // feed
-
-    // lookat matrix
-    gl.uniformMatrix4fv(lookAtUniform, false, lookAtMatrix);
     // eye vector
     gl.uniform3fv(eyeUniform, eye); // feed
-    // center vector
-    gl.uniform3fv(centerUniform, center); // feed
-    // up value
-    gl.uniform3fv(upUniform, up); // feed
-
-    gl.uniformMatrix4fv(perspectiveUniform, false, perspectiveMatrix);
-    // eye vector
-    gl.uniform1f(leftUniform, WIN_LEFT); // feed
-    // right vector
-    gl.uniform1f(rightUniform, WIN_RIGHT); // feed
+    // lookat vector
+    gl.uniform3fv(lookatUniform, lookat); // feed
+    
+    // windowDist value
+    gl.uniform1f(windowDistUniform, 0.5); // feed
+    // left value
+    gl.uniform1f(leftUniform, -0.5); // feed
+    // right value
+    gl.uniform1f(rightUniform, 0.5); // feed
     // bottom value
-    gl.uniform1f(bottomUniform, WIN_BOTTOM); // feed
+    gl.uniform1f(bottomUniform, -0.5); // feed
     // top value
-    gl.uniform1f(topUniform, WIN_TOP); // feed
+    gl.uniform1f(topUniform, 0.5); // feed
     // near value
-    gl.uniform1f(nearUniform, 0); // feed
+    gl.uniform1f(nearUniform, 0.5); // feed
     // far value
-    gl.uniform1f(farUniform, 1); // feed
+    gl.uniform1f(farUniform, 1.5); // feed
 
     gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
 } // end render triangles
