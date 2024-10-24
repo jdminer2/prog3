@@ -12,27 +12,35 @@ var Eye = new vec4.fromValues(0.5,0.5,-0.5,1.0); // default eye position in worl
 /* webgl globals */
 var gl = null; // the all powerful gl object. It's all here folks!
 var vertexBuffer; // this contains vertex coordinates in triples
+var triangleBuffer; // this contains indices into vertexBuffer in triples
+var triBufferSize = 0; // the number of indices in the triangle buffer
+
+var normalBuffer; // this contains triangle normals
+
 var diffuseColorBuffer; // this contains diffuse color values in triples
 var ambientColorBuffer; // this contains ambient color values in triples
 var specularColorBuffer; // this contains specular color values in triples
 var nBuffer; // this contains specular exponent values
-var triangleBuffer; // this contains indices into vertexBuffer in triples
-var triBufferSize = 0; // the number of indices in the triangle buffer
+
 var eye; // vector representing eye location
 var up; // vector representing up direction
 var lookat; // vector representing eye look direction
+
 var lightPos; // vector representing light position
-var vertexPositionAttrib; // where to put position for vertex shader
+
+var vertexPositionAttrib; // where to put position for vertex 
+
+var normalAttrib; // where to put normal vector for vertex shader
 
 var diffuseColorAttrib; // where to put diffuse color for vertex shader
 var ambientColorAttrib; // where to put ambient color for vertex shader
 var specularColorAttrib; // where to put specular color for vertex shader
 var nAttrib; // where to put specular exponent for vertex shader
-var normalAttrib; // where to put normal vector for vertex shader
 
 var eyeUniform; // where to put eye vector for vertex shader
 var upUniform; // where to put up vector for vertex shader
 var lookatUniform; // where to put lookat flag for vertex shader
+
 var lightPosUniform; // where to put lightPos vector for vertex shader
 
 var windowDistUniform; // where to put windowDist value for vertex shader
@@ -40,10 +48,13 @@ var leftUniform; // where to put left value for vertex shader
 var rightUniform; // where to put right value for vertex shader
 var bottomUniform; // where to put bottom value for vertex shader
 var topUniform; // where to put top value for vertex shader
-
 var nearUniform; // where to put near value for vertex shader
 var farUniform; // where to put far value for vertex shader
 
+// Vertices after transformation by per-triangle matrices.
+var transformedVertices = [];
+// per-triangle matrices.
+var transformMatrices = [];
 
 // ASSIGNMENT HELPER FUNCTIONS
 
@@ -103,46 +114,56 @@ function loadTriangles() {
     if (inputTriangles != String.null) { 
         var whichSetVert; // index of vertex in current triangle set
         var whichSetTri; // index of triangle in current triangle set
+        
         var coordArray = []; // 1D array of vertex coords for WebGL
         var idxArray = []; // 1D array of indices for WebGL
+        
+        var normalArray = []; // 1D array of normal vector coords for WebGL
+        
         var diffuseColorArray = []; // 1D array of diffuse color coords for WebGL
         var ambientColorArray = []; // 1D array of ambient color coords for WebGL
         var specularColorArray = []; // 1D array of specular color coords for WebGL
         var nArray = [];
-        var normalArray = []; // 1D array of normal vector coords for WebGL
 
         var idx = 0;
-        inputTriangles.forEach(triangleSet => {
+        inputTriangles.forEach((triangleSet,i) => {
+            const transformedVertices = getTransformedVertices(triangleSet.vertices, i);
             triangleSet.triangles.forEach(triangle => {
-                const vertices = triangle.map(vertex => triangleSet.vertices[vertex]);
+                const vertices = triangle.map(vertex => transformedVertices[vertex]);
 
                 // Compute normal for triangle
-                const A = [0,1,2].map(dim => vertices[1][dim] - vertices[0][dim]);
-                const B = [0,1,2].map(dim => vertices[2][dim] - vertices[0][dim]);
+                const A = vec3.create();
+                vec3.sub(A, vertices[1], vertices[0]);
+                const B = vec3.create();
+                vec3.sub(B, vertices[2], vertices[0]);
                 let normal = vec3.create();
-                normal = vec3.cross(normal, A, B);
-                const normalLength = vec3.len(normal);
-                normal = normal.map(val => val / normalLength);
+                vec3.cross(normal, A, B);
+                vec3.normalize(normal, normal);
                 
                 vertices.forEach(vertex => {
-                    // No more reusing vertices, because if I do then a vertex may border multiple triangles with different normals,
+                    // No more triangles sharing vertices, because they may have different normals,
                     // so I wouldn't know how to provide info for specular highlight.
+                    // I don't need to duplicate triangles to make them double-sided; the shader already makes them double-sided.
                     coordArray.push(vertex);
                     idxArray.push(idx++);
+                    
+                    normalArray.push(normal);
+                    
                     diffuseColorArray.push(triangleSet.material.diffuse);
                     ambientColorArray.push(triangleSet.material.ambient);
                     specularColorArray.push(triangleSet.material.specular);
                     nArray.push(triangleSet.material.n);
-                    normalArray.push(normal);
                 });
             });
         });
-        coordArray = coordArray.flat();
+        coordArray = coordArray.map(x=>Array.from(x)).flat();
+        triBufferSize = idx;
+        
+        normalArray = normalArray.map(x=>Array.from(x)).flat();
+        
         diffuseColorArray = diffuseColorArray.flat();
         ambientColorArray = ambientColorArray.flat();
         specularColorArray = specularColorArray.flat();
-        normalArray = normalArray.map(x=>Array.from(x)).flat();
-        triBufferSize = idx;
     
         // send the vertex coords to webGL
         vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
@@ -153,6 +174,11 @@ function loadTriangles() {
         triangleBuffer = gl.createBuffer(); // init empty triangle idx buffer
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triangleBuffer); // activate that buffer
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idxArray),gl.STATIC_DRAW); // idxs to that buffer
+        
+        // send the normal vectors to webGL
+        normalBuffer = gl.createBuffer(); // init empty vector buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate that buffer
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normalArray),gl.STATIC_DRAW); // vectors to that buffer
 
         // send the diffuse vertex colors to webGL
         diffuseColorBuffer = gl.createBuffer(); // init empty vertex color buffer
@@ -173,11 +199,6 @@ function loadTriangles() {
         nBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER,nBuffer);
         gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(nArray),gl.STATIC_DRAW);
-        
-        // send the normal vectors to webGL
-        normalBuffer = gl.createBuffer(); // init empty vector buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate that buffer
-        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normalArray),gl.STATIC_DRAW); // vectors to that buffer
     } // end if triangles found
 } // end load triangles
 
@@ -186,21 +207,24 @@ function setupShaders() {
     
     // define fragment shader in essl using es6 template strings
     var fShaderCode = `
+        varying lowp vec3 vertexPos;
+        
+        varying lowp vec3 norm;
+        
         varying lowp vec3 diffuseCol;    
         varying lowp vec3 ambientCol;
         varying lowp vec3 specularCol;
         varying lowp float nVal;
-        varying lowp vec3 norm;
-        
-        varying lowp vec3 vertexPos;
         
         uniform lowp vec3 eye;
         uniform lowp vec3 lightPos;
         
         void main(void) {
+            lowp vec3 normVector = norm;
+            
             lowp vec3 toLight = normalize(lightPos - vertexPos);
             lowp vec3 toEye = normalize(eye - vertexPos);
-            lowp vec3 normVector = norm;
+            
             if(dot(normVector, toEye) < 0.0)
                 normVector *= -1.0;
                 
@@ -209,11 +233,11 @@ function setupShaders() {
             lowp float diffCoeff = dot(normVector, toLight);
             if(diffCoeff > 0.0) {
                 color += diffuseCol * diffCoeff;
-            }
             
-            lowp float specCoeff = dot(normVector, normalize(toEye + toLight));
-            if(specCoeff > 0.0) {
-                color += specularCol * pow(specCoeff,nVal);
+                lowp float specCoeff = dot(normVector, normalize(toEye + toLight));
+                if(specCoeff > 0.0) {
+                    color += specularCol * pow(specCoeff,nVal);
+                }
             }
 
             color = min(color, vec3(1,1,1));
@@ -227,17 +251,8 @@ function setupShaders() {
         attribute vec3 vertexPosition;
         varying lowp vec3 vertexPos;
         
-        uniform lowp vec3 eye; // location
-        uniform highp vec3 up; // direction
-        uniform highp vec3 lookat; // direction
-        
-        uniform float windowDist;
-        uniform float left;
-        uniform float right;
-        uniform float bottom;
-        uniform float top;
-        uniform float near;
-        uniform float far;
+        attribute vec3 normal;
+        varying highp vec3 norm; // direction
 
         attribute vec3 diffuseColor;
         varying highp vec3 diffuseCol;
@@ -247,10 +262,20 @@ function setupShaders() {
         varying highp vec3 specularCol;
         attribute float n;
         varying highp float nVal;
-        attribute vec3 normal;
-        varying highp vec3 norm; // direction
+        
+        uniform lowp vec3 eye; // location
+        uniform highp vec3 up; // direction
+        uniform highp vec3 lookat; // direction
 
         uniform vec3 lightPos; // location
+        
+        uniform float windowDist;
+        uniform float left;
+        uniform float right;
+        uniform float bottom;
+        uniform float top;
+        uniform float near;
+        uniform float far;
 
         void main(void) {
             // Perspective viewing transform.
@@ -311,6 +336,11 @@ function setupShaders() {
                 vertexPositionAttrib = // get pointer to vertex shader input
                     gl.getAttribLocation(shaderProgram, "vertexPosition"); 
                 gl.enableVertexAttribArray(vertexPositionAttrib); // input to shader from array
+                
+                normalAttrib = // get pointer to normal vector shader input
+                    gl.getAttribLocation(shaderProgram, "normal");
+                gl.enableVertexAttribArray(normalAttrib); // input to shader from array
+                
                 diffuseColorAttrib = // get pointer to diffuse color shader input
                     gl.getAttribLocation(shaderProgram, "diffuseColor");
                 gl.enableVertexAttribArray(diffuseColorAttrib); // input to shader from array
@@ -323,9 +353,6 @@ function setupShaders() {
                 nAttrib = // get pointer to specular exponent shader input
                     gl.getAttribLocation(shaderProgram, "n");
                 gl.enableVertexAttribArray(nAttrib); // input to shader from array
-                normalAttrib = // get pointer to normal vector shader input
-                    gl.getAttribLocation(shaderProgram, "normal");
-                gl.enableVertexAttribArray(normalAttrib); // input to shader from array
                 
                 eyeUniform = // get pointer to eye vector
                     gl.getUniformLocation(shaderProgram, "eye");
@@ -333,6 +360,7 @@ function setupShaders() {
                     gl.getUniformLocation(shaderProgram, "up");
                 lookatUniform = // get pointer to lookat vector
                     gl.getUniformLocation(shaderProgram, "lookat");
+                
                 lightPosUniform = // get pointer to lightPos vector
                     gl.getUniformLocation(shaderProgram, "lightPos");
 
@@ -376,6 +404,14 @@ function renderTriangles() {
     // vertex buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate
     gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
+    // idx buffer: activate and feed into vertex shader
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer);
+    gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
+    
+    // normal buffer: activate and feed into vertex shader
+    gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate
+    gl.vertexAttribPointer(normalAttrib,3,gl.FLOAT,false,0,0); // feed
+    
     // diffuse color buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,diffuseColorBuffer); // activate
     gl.vertexAttribPointer(diffuseColorAttrib,3,gl.FLOAT,false,0,0); // feed
@@ -388,12 +424,6 @@ function renderTriangles() {
     // specular exponent buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,nBuffer); // activate
     gl.vertexAttribPointer(nAttrib,1,gl.FLOAT,false,0,0); // feed
-    // normal buffer: activate and feed into vertex shader
-    gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate
-    gl.vertexAttribPointer(normalAttrib,3,gl.FLOAT,false,0,0); // feed
-    // idx buffer: activate and feed into vertex shader
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer);
-    gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
     
     // eye vector
     gl.uniform3fv(eyeUniform, eye); // feed
@@ -401,6 +431,7 @@ function renderTriangles() {
     gl.uniform3fv(upUniform, up); // feed
     // lookat vector
     gl.uniform3fv(lookatUniform, lookat); // feed
+    
     // lightPos vector
     gl.uniform3fv(lightPosUniform, lightPos); // feed
     
@@ -414,7 +445,6 @@ function renderTriangles() {
     gl.uniform1f(bottomUniform, -0.5); // feed
     // top value
     gl.uniform1f(topUniform, 0.5); // feed
-    
     // near value
     gl.uniform1f(nearUniform, 0.5); // feed
     // far value
@@ -424,13 +454,187 @@ function renderTriangles() {
 } // end render triangles
 
 
+function getTransformedVertices(untransformedVertices, i) {
+    // If up-to-date vertices are already computed, don't recompute.
+    if(transformedVertices[i])
+        return transformedVertices[i];
+    // Lengthen the array to hold this index.
+    while(transformedVertices.length <= i)
+        transformedVertices.push(undefined);
+    while(transformMatrices.length <= i)
+        transformMatrices.push(mat4.create());
+    transformedVertices[i] = untransformedVertices.map(untransformedVertex => {
+        const transformedVertex = vec3.create();
+        vec3.transformMat4(transformedVertex, untransformedVertex, transformMatrices[i]);
+        return transformedVertex;
+    });
+    return transformedVertices[i];
+}
+
+
 /* MAIN -- HERE is where execution begins after window load */
 
 function main() {
   
-  setupWebGL(); // set up the webGL environment
-  loadTriangles(); // load in the triangles from tri file
-  setupShaders(); // setup the webGL shaders
-  renderTriangles(); // draw the triangles using webGL
+    setupWebGL(); // set up the webGL environment
+    loadTriangles(); // load in the triangles from tri file
+    setupShaders(); // setup the webGL shaders
+    renderTriangles(); // draw the triangles using webGL
+    
+    // shift listener
+    document.addEventListener('keypress', (e) => {
+        const MOVEMENT_SPEED = 0.03;
+        // 5 degrees
+        const SIN_THETA = 0.0523359562429;
+        const COS_THETA = 0.998629534755;
+        
+        const eyeVec = vec3.fromValues(...eye);
+        const lookatVec = vec3.fromValues(...lookat);
+        vec3.normalize(lookatVec,lookatVec);
+        const upVec = vec3.fromValues(...up);
+        vec3.scaleAndAdd(upVec,upVec,lookatVec,-vec3.dot(upVec,lookatVec)/vec3.dot(lookatVec,lookatVec));
+        vec3.normalize(upVec,upVec);
+        const rightVec = vec3.create();
+        vec3.cross(rightVec,lookatVec,upVec);
+        
+        switch(e.key) {
+            // Move left
+            case 'a':
+                vec3.scaleAndAdd(eyeVec,eyeVec,rightVec,-MOVEMENT_SPEED);
+                break;
+            // Move right
+            case 'd':
+                vec3.scaleAndAdd(eyeVec,eyeVec,rightVec,MOVEMENT_SPEED);
+                break;
+            // Move forward
+            case 'w':
+                vec3.scaleAndAdd(eyeVec,eyeVec,lookatVec,MOVEMENT_SPEED);
+                break;
+            // Move backward
+            case 's':
+                vec3.scaleAndAdd(eyeVec,eyeVec,lookatVec,-MOVEMENT_SPEED);
+                break;
+            // Move up
+            case 'q':
+                vec3.scaleAndAdd(eyeVec,eyeVec,upVec,MOVEMENT_SPEED);
+                break;
+            // Move down
+            case 'e':
+                vec3.scaleAndAdd(eyeVec,eyeVec,upVec,-MOVEMENT_SPEED);
+                break;
+            // Turn left
+            case 'A':
+                vec3.transformMat3(lookatVec,lookatVec,mat3.fromValues(
+                    upVec[0]*upVec[0]*(1-COS_THETA) + COS_THETA,
+                    upVec[0]*upVec[1]*(1-COS_THETA) + upVec[2]*SIN_THETA,
+                    upVec[0]*upVec[2]*(1-COS_THETA) - upVec[1]*SIN_THETA,
+                    upVec[1]*upVec[0]*(1-COS_THETA) - upVec[2]*SIN_THETA,
+                    upVec[1]*upVec[1]*(1-COS_THETA) + COS_THETA,
+                    upVec[1]*upVec[2]*(1-COS_THETA) + upVec[0]*SIN_THETA,
+                    upVec[2]*upVec[0]*(1-COS_THETA) + upVec[1]*SIN_THETA,
+                    upVec[2]*upVec[1]*(1-COS_THETA) - upVec[0]*SIN_THETA,
+                    upVec[2]*upVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                break;
+            // Turn right
+            case 'D':
+                vec3.transformMat3(lookatVec,lookatVec,mat3.fromValues(
+                    upVec[0]*upVec[0]*(1-COS_THETA) + COS_THETA,
+                    upVec[0]*upVec[1]*(1-COS_THETA) - upVec[2]*SIN_THETA,
+                    upVec[0]*upVec[2]*(1-COS_THETA) + upVec[1]*SIN_THETA,
+                    upVec[1]*upVec[0]*(1-COS_THETA) + upVec[2]*SIN_THETA,
+                    upVec[1]*upVec[1]*(1-COS_THETA) + COS_THETA,
+                    upVec[1]*upVec[2]*(1-COS_THETA) - upVec[0]*SIN_THETA,
+                    upVec[2]*upVec[0]*(1-COS_THETA) - upVec[1]*SIN_THETA,
+                    upVec[2]*upVec[1]*(1-COS_THETA) + upVec[0]*SIN_THETA,
+                    upVec[2]*upVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                break;
+            // Lean forward to look down. It feels more intuitive to make W look upward,
+            // but the instructions say to make it like this instead.
+            case 'W':
+                vec3.transformMat3(lookatVec,lookatVec,mat3.fromValues(
+                    rightVec[0]*rightVec[0]*(1-COS_THETA) + COS_THETA,
+                    rightVec[0]*rightVec[1]*(1-COS_THETA) - rightVec[2]*SIN_THETA,
+                    rightVec[0]*rightVec[2]*(1-COS_THETA) + rightVec[1]*SIN_THETA,
+                    rightVec[1]*rightVec[0]*(1-COS_THETA) + rightVec[2]*SIN_THETA,
+                    rightVec[1]*rightVec[1]*(1-COS_THETA) + COS_THETA,
+                    rightVec[1]*rightVec[2]*(1-COS_THETA) - rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[0]*(1-COS_THETA) - rightVec[1]*SIN_THETA,
+                    rightVec[2]*rightVec[1]*(1-COS_THETA) + rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                vec3.transformMat3(upVec,upVec,mat3.fromValues(
+                    rightVec[0]*rightVec[0]*(1-COS_THETA) + COS_THETA,
+                    rightVec[0]*rightVec[1]*(1-COS_THETA) - rightVec[2]*SIN_THETA,
+                    rightVec[0]*rightVec[2]*(1-COS_THETA) + rightVec[1]*SIN_THETA,
+                    rightVec[1]*rightVec[0]*(1-COS_THETA) + rightVec[2]*SIN_THETA,
+                    rightVec[1]*rightVec[1]*(1-COS_THETA) + COS_THETA,
+                    rightVec[1]*rightVec[2]*(1-COS_THETA) - rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[0]*(1-COS_THETA) - rightVec[1]*SIN_THETA,
+                    rightVec[2]*rightVec[1]*(1-COS_THETA) + rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                break;
+            // Lean backward to look up.
+            case 'S':
+                vec3.transformMat3(lookatVec,lookatVec,mat3.fromValues(
+                    rightVec[0]*rightVec[0]*(1-COS_THETA) + COS_THETA,
+                    rightVec[0]*rightVec[1]*(1-COS_THETA) + rightVec[2]*SIN_THETA,
+                    rightVec[0]*rightVec[2]*(1-COS_THETA) - rightVec[1]*SIN_THETA,
+                    rightVec[1]*rightVec[0]*(1-COS_THETA) - rightVec[2]*SIN_THETA,
+                    rightVec[1]*rightVec[1]*(1-COS_THETA) + COS_THETA,
+                    rightVec[1]*rightVec[2]*(1-COS_THETA) + rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[0]*(1-COS_THETA) + rightVec[1]*SIN_THETA,
+                    rightVec[2]*rightVec[1]*(1-COS_THETA) - rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                vec3.transformMat3(upVec,upVec,mat3.fromValues(
+                    rightVec[0]*rightVec[0]*(1-COS_THETA) + COS_THETA,
+                    rightVec[0]*rightVec[1]*(1-COS_THETA) + rightVec[2]*SIN_THETA,
+                    rightVec[0]*rightVec[2]*(1-COS_THETA) - rightVec[1]*SIN_THETA,
+                    rightVec[1]*rightVec[0]*(1-COS_THETA) - rightVec[2]*SIN_THETA,
+                    rightVec[1]*rightVec[1]*(1-COS_THETA) + COS_THETA,
+                    rightVec[1]*rightVec[2]*(1-COS_THETA) + rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[0]*(1-COS_THETA) + rightVec[1]*SIN_THETA,
+                    rightVec[2]*rightVec[1]*(1-COS_THETA) - rightVec[0]*SIN_THETA,
+                    rightVec[2]*rightVec[2]*(1-COS_THETA) + COS_THETA,
+                ));
+                break;
+            case "ArrowLeft":
+                break;
+            case "ArrowRight":
+                break;
+            case ' ':
+                break;
+            case 'k':
+                break;
+            case ';':
+                break;
+            case 'o':
+                break;
+            case 'l':
+                break;
+            case 'i':
+                break;
+            case 'p':
+                break;
+            case 'K':
+                break;
+            case ':':
+                break;
+            case 'O':
+                break;
+            case 'L':
+                break;
+            case 'I':
+                break;
+            case 'P':
+                break;
+        }
+        eye = Array.from(eyeVec);
+        lookat = Array.from(lookatVec);
+        up = Array.from(upVec);
+    });
   
 } // end main
