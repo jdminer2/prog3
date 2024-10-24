@@ -490,7 +490,94 @@ function centroid(vertices) {
 }
 
 function specialAction() {
-    
+    inputTriangles.push({
+        material:{
+            alpha: 0.7,
+            ambient: [0,0,0],
+            diffuse: [0,0.5,0],
+            n: 1.5,
+            specular: [0,0.5,0],
+            texture: "billie.jpg",
+        },
+        normals:[
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+        ],
+        triangles:[
+            [0,1,2],
+            [2,3,0],
+        ],
+        uvs:[
+            [0,0],
+            [0,1],
+            [1,1],
+            [1,0],
+        ],
+        vertices:[
+            [-1,0,1],
+            [-1,0,0],
+            [2,0,0],
+            [2,0,1],
+        ],
+    });
+    inputTriangles.push({
+        material:{
+            alpha: 0.7,
+            ambient: [1,1,1],
+            diffuse: [1,1,1],
+            n: 1.5,
+            specular: [1,1,1],
+            texture: "billie.jpg",
+        },
+        normals:[
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+            [0,0,-1],
+        ],
+        triangles:[
+            [0,1,2],
+            [2,3,0],
+            [4,5,6],
+            [6,7,4],
+            [1,0,4],
+            [4,5,1],
+            [2,1,5],
+            [5,6,2],
+            [3,2,6],
+            [6,7,3],
+            [0,3,7],
+            [7,4,0],
+        ],
+        uvs:[
+            [0,0],
+            [0,1],
+            [1,1],
+            [1,0],
+            [0,0],
+            [0,1],
+            [1,1],
+            [1,0],
+        ],
+        vertices:[
+            [.5,.5,.5],
+            [.5,.5,.6],
+            [.5,.6,.6],
+            [.5,.6,.5],
+            [.6,.5,.5],
+            [.6,.5,.6],
+            [.6,.6,.6],
+            [.6,.6,.5],
+        ],
+    });
+    lightPos = [0.55,0.55,0.55];
+    handleTriangles();
 }
 
 /* MAIN -- HERE is where execution begins after window load */
