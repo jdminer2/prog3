@@ -51,10 +51,15 @@ var topUniform; // where to put top value for vertex shader
 var nearUniform; // where to put near value for vertex shader
 var farUniform; // where to put far value for vertex shader
 
-// Vertices after transformation by per-triangle matrices.
+// The triangles from the file.
+var inputTriangles;
+// Vertices after transformation by per-triangle-set matrices.
 var transformedVertices = [];
-// per-triangle matrices.
+// per-triangle-set matrices.
 var transformMatrices = [];
+// selected triangle set
+var selectedTriangleSet = -1;
+var selectionOn = false;
 
 // ASSIGNMENT HELPER FUNCTIONS
 
@@ -109,8 +114,7 @@ function setupWebGL() {
 } // end setupWebGL
 
 // read triangles in, load them into webgl buffers
-function loadTriangles() {
-    var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+function handleTriangles() {
     if (inputTriangles != String.null) { 
         var whichSetVert; // index of vertex in current triangle set
         var whichSetTri; // index of triangle in current triangle set
@@ -406,7 +410,6 @@ function renderTriangles() {
     gl.vertexAttribPointer(vertexPositionAttrib,3,gl.FLOAT,false,0,0); // feed
     // idx buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer);
-    gl.drawElements(gl.TRIANGLES,triBufferSize,gl.UNSIGNED_SHORT,0); // render
     
     // normal buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate
@@ -455,14 +458,18 @@ function renderTriangles() {
 
 
 function getTransformedVertices(untransformedVertices, i) {
+    console.log(transformMatrices);
     // If up-to-date vertices are already computed, don't recompute.
     if(transformedVertices[i])
         return transformedVertices[i];
+    
     // Lengthen the array to hold this index.
     while(transformedVertices.length <= i)
         transformedVertices.push(undefined);
     while(transformMatrices.length <= i)
         transformMatrices.push(mat4.create());
+
+    // Transform the vertices.
     transformedVertices[i] = untransformedVertices.map(untransformedVertex => {
         const transformedVertex = vec3.create();
         vec3.transformMat4(transformedVertex, untransformedVertex, transformMatrices[i]);
@@ -471,22 +478,166 @@ function getTransformedVertices(untransformedVertices, i) {
     return transformedVertices[i];
 }
 
+function centroid(vertices) {
+    const centroidPoint = vec3.create();
+    if(vertices.length == 0)
+        return centroidPoint;
+    vertices.forEach(vertex => {
+        vec3.add(centroidPoint, centroidPoint, vertex);
+    });
+    vec3.scale(centroidPoint, centroidPoint, 1/vertices.length);
+    return centroidPoint;
+}
+
+function specialAction() {
+    
+}
 
 /* MAIN -- HERE is where execution begins after window load */
 
 function main() {
   
     setupWebGL(); // set up the webGL environment
-    loadTriangles(); // load in the triangles from tri file
+    inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+    handleTriangles(); // load in the triangles from tri file
     setupShaders(); // setup the webGL shaders
     renderTriangles(); // draw the triangles using webGL
+
+
+    // spacebar listener
+    var specialOn = false;
+    document.addEventListener('keydown', (e) => {
+        const tempVec = vec3.create();
+        const tempMat = mat4.create();
+        switch(e.key) {
+            // Cycle selection left in the array of triangle sets
+            case "ArrowLeft":
+                if(selectionOn) {
+                    // Unscale triangle set by 1.2
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromScaling(tempMat, vec3.fromValues(1/1.2, 1/1.2, 1/1.2));
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate old selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                }
+                
+                // Change selection.
+                selectedTriangleSet--;
+                if(selectedTriangleSet < 0)
+                    selectedTriangleSet = transformedVertices.length - 1;
+                
+                if(selectedTriangleSet !== -1) {
+                    selectionOn = true;
+                    
+                    // Lengthen the array to hold this index.
+                    while(transformedVertices.length <= selectedTriangleSet)
+                        transformedVertices.push(undefined);
+                    while(transformMatrices.length <= selectedTriangleSet)
+                        transformMatrices.push(mat4.create());
+
+                    // Scale triangle set by 1.2
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromScaling(tempMat, vec3.fromValues(1.2,1.2,1.2));
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate new selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
+                break;
+            // Cycle selection right in the array of triangle sets
+            case "ArrowRight":
+                if(selectionOn) {
+                    // Unscale triangle set by 1.2
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromScaling(tempMat, vec3.fromValues(1/1.2, 1/1.2, 1/1.2));
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate old selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                }
+                
+                // Change selection.
+                selectedTriangleSet++;
+                if(selectedTriangleSet >= transformedVertices.length)
+                    selectedTriangleSet = 0;
+                
+                if(selectedTriangleSet !== -1) {
+                    selectionOn = true;
+                    
+                    // Lengthen the array to hold this index.
+                    while(transformedVertices.length <= selectedTriangleSet)
+                        transformedVertices.push(undefined);
+                    while(transformMatrices.length <= selectedTriangleSet)
+                        transformMatrices.push(mat4.create());
+
+                    // Scale triangle set by 1.2
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromScaling(tempMat, vec3.fromValues(1.2,1.2,1.2));
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate new selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
+                break;
+            // Deselect triangle set
+            case ' ':
+                if(selectionOn) {
+                    selectionOn = false;
+                    
+                    // Unscale triangle set by 1.2
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromScaling(tempMat, vec3.fromValues(1/1.2, 1/1.2, 1/1.2));
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate old selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
+                break;
+            case '!':
+                if (!specialOn) {
+                    specialOn = true;
+                    specialAction();
+                }
+        }
+    })
     
     // shift listener
     document.addEventListener('keypress', (e) => {
         const MOVEMENT_SPEED = 0.03;
-        // 5 degrees
-        const SIN_THETA = 0.0523359562429;
-        const COS_THETA = 0.998629534755;
+        const ROTATION_SPEED = 0.03;
+        // 3 degrees
+        const SIN_THETA = 0.0299955002025;
+        const COS_THETA = 0.999550033749;
         
         const eyeVec = vec3.fromValues(...eye);
         const lookatVec = vec3.fromValues(...lookat);
@@ -496,6 +647,9 @@ function main() {
         vec3.normalize(upVec,upVec);
         const rightVec = vec3.create();
         vec3.cross(rightVec,lookatVec,upVec);
+        
+        const tempVec = vec3.create();
+        const tempMat = mat4.create();
         
         switch(e.key) {
             // Move left
@@ -522,6 +676,9 @@ function main() {
             case 'e':
                 vec3.scaleAndAdd(eyeVec,eyeVec,upVec,-MOVEMENT_SPEED);
                 break;
+
+
+                
             // Turn left
             case 'A':
                 vec3.transformMat3(lookatVec,lookatVec,mat3.fromValues(
@@ -601,35 +758,175 @@ function main() {
                     rightVec[2]*rightVec[2]*(1-COS_THETA) + COS_THETA,
                 ));
                 break;
-            case "ArrowLeft":
-                break;
-            case "ArrowRight":
-                break;
-            case ' ':
-                break;
+
+                
             case 'k':
+                if(selectionOn) {
+                    vec3.scale(tempVec, rightVec, -MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case ';':
+                if(selectionOn) {
+                    vec3.scale(tempVec, rightVec, MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'o':
+                if(selectionOn) {
+                    vec3.scale(tempVec, lookatVec, MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'l':
+                if(selectionOn) {
+                    vec3.scale(tempVec, lookatVec, -MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'i':
+                if(selectionOn) {
+                    vec3.scale(tempVec, upVec, MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'p':
+                if(selectionOn) {
+                    vec3.scale(tempVec, upVec, -MOVEMENT_SPEED);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'K':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, ROTATION_SPEED, upVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case ':':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, -ROTATION_SPEED, upVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'O':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, -ROTATION_SPEED, rightVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'L':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, ROTATION_SPEED, rightVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'I':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, ROTATION_SPEED, lookatVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
             case 'P':
+                if(selectionOn) {
+                    const center = centroid(transformedVertices[selectedTriangleSet]);
+                    const transformMatrix = transformMatrices[selectedTriangleSet];
+                    vec3.negate(tempVec, center);
+                    mat4.fromTranslation(tempMat, tempVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromRotation(tempMat, -ROTATION_SPEED, lookatVec);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    mat4.fromTranslation(tempMat, center);
+                    mat4.mul(transformMatrix, tempMat, transformMatrix);
+                    
+                    // Invalidate selected triangle set's transformedVertices, they must be recomputed.
+                    transformedVertices[selectedTriangleSet] = undefined;
+                    handleTriangles();
+                }
                 break;
         }
         eye = Array.from(eyeVec);
