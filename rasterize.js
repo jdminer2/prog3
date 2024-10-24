@@ -60,6 +60,7 @@ var transformMatrices = [];
 // selected triangle set
 var selectedTriangleSet = -1;
 var selectionOn = false;
+var lightSourceBlock = -1;
 
 // ASSIGNMENT HELPER FUNCTIONS
 
@@ -493,38 +494,6 @@ function specialAction() {
     inputTriangles.push({
         material:{
             alpha: 0.7,
-            ambient: [0,0,0],
-            diffuse: [0,0.5,0],
-            n: 1.5,
-            specular: [0,0.5,0],
-            texture: "billie.jpg",
-        },
-        normals:[
-            [0,0,-1],
-            [0,0,-1],
-            [0,0,-1],
-            [0,0,-1],
-        ],
-        triangles:[
-            [0,1,2],
-            [2,3,0],
-        ],
-        uvs:[
-            [0,0],
-            [0,1],
-            [1,1],
-            [1,0],
-        ],
-        vertices:[
-            [-1,0,1],
-            [-1,0,0],
-            [2,0,0],
-            [2,0,1],
-        ],
-    });
-    inputTriangles.push({
-        material:{
-            alpha: 0.7,
             ambient: [1,1,1],
             diffuse: [1,1,1],
             n: 1.5,
@@ -577,6 +546,7 @@ function specialAction() {
         ],
     });
     lightPos = [0.55,0.55,0.55];
+    lightSourceBlock = inputTriangles.length;
     handleTriangles();
 }
 
@@ -856,6 +826,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case ';':
@@ -867,6 +841,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'o':
@@ -878,6 +856,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'l':
@@ -889,6 +871,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'i':
@@ -900,6 +886,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'p':
@@ -911,6 +901,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'K':
@@ -928,6 +922,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case ':':
@@ -945,6 +943,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'O':
@@ -962,6 +964,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'L':
@@ -979,6 +985,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'I':
@@ -996,6 +1006,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
             case 'P':
@@ -1013,6 +1027,10 @@ function main() {
                     // Invalidate selected triangle set's transformedVertices, they must be recomputed.
                     transformedVertices[selectedTriangleSet] = undefined;
                     handleTriangles();
+                    if(selectedTriangleSet === lightSourceBlock) {
+                        lightPos = Array.from(centroid(transformedVertices[selectedTriangleSet]));
+                        gl.uniform3fv(lightPosUniform, lightPos); // feed
+                    }
                 }
                 break;
         }
