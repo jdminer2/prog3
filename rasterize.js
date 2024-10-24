@@ -21,6 +21,7 @@ var triBufferSize = 0; // the number of indices in the triangle buffer
 var eye; // vector representing eye location
 var up; // vector representing up direction
 var lookat; // vector representing eye look direction
+var lightPos; // vector representing light position
 var vertexPositionAttrib; // where to put position for vertex shader
 
 var diffuseColorAttrib; // where to put diffuse color for vertex shader
@@ -32,6 +33,7 @@ var normalAttrib; // where to put normal vector for vertex shader
 var eyeUniform; // where to put eye vector for vertex shader
 var upUniform; // where to put up vector for vertex shader
 var lookatUniform; // where to put lookat flag for vertex shader
+var lightPosUniform; // where to put lightPos vector for vertex shader
 
 var windowDistUniform; // where to put windowDist value for vertex shader
 var leftUniform; // where to put left value for vertex shader
@@ -115,8 +117,8 @@ function loadTriangles() {
                 const vertices = triangle.map(vertex => triangleSet.vertices[vertex]);
 
                 // Compute normal for triangle
-                const A = [0,1,2].map(dim => vertices[2][dim] - vertices[0][dim]);
-                const B = [0,1,2].map(dim => vertices[1][dim] - vertices[0][dim]);
+                const A = [0,1,2].map(dim => vertices[1][dim] - vertices[0][dim]);
+                const B = [0,1,2].map(dim => vertices[2][dim] - vertices[0][dim]);
                 let normal = vec3.create();
                 normal = vec3.cross(normal, A, B);
                 const normalLength = vec3.len(normal);
@@ -139,7 +141,7 @@ function loadTriangles() {
         diffuseColorArray = diffuseColorArray.flat();
         ambientColorArray = ambientColorArray.flat();
         specularColorArray = specularColorArray.flat();
-        normalArray = normalArray.flat();
+        normalArray = normalArray.map(x=>Array.from(x)).flat();
         triBufferSize = idx;
     
         // send the vertex coords to webGL
@@ -165,11 +167,12 @@ function loadTriangles() {
         // send the specular vertex colors to webGL
         specularColorBuffer = gl.createBuffer(); // init empty vertex color buffer
         gl.bindBuffer(gl.ARRAY_BUFFER,specularColorBuffer); // activate that buffer
-        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(specularColorBuffer),gl.STATIC_DRAW); // colors to that buffer
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(specularColorArray),gl.STATIC_DRAW); // colors to that buffer
 
+        // send the specular exponent to webGL
         nBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER,nBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(nBuffer),gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(nArray),gl.STATIC_DRAW);
         
         // send the normal vectors to webGL
         normalBuffer = gl.createBuffer(); // init empty vector buffer
@@ -186,21 +189,34 @@ function setupShaders() {
         varying lowp vec3 diffuseCol;    
         varying lowp vec3 ambientCol;
         varying lowp vec3 specularCol;
-        varying lowp float n;
+        varying lowp float nVal;
         varying lowp vec3 norm;
-        varying lowp vec3 toLight;
-        varying lowp vec3 toEye;
+        
+        varying lowp vec3 vertexPos;
+        
+        uniform lowp vec3 eye;
+        uniform lowp vec3 lightPos;
+        
         void main(void) {
+            lowp vec3 toLight = normalize(lightPos - vertexPos);
+            lowp vec3 toEye = normalize(eye - vertexPos);
+            lowp vec3 normVector = norm;
+            if(dot(normVector, toEye) < 0.0)
+                normVector *= -1.0;
+                
             lowp vec3 color = ambientCol;
-            lowp float difCoeff = dot(norm, toLight);
-            //if(difCoeff > 0.0) {
-                color += diffuseCol * difCoeff;
-            //}
-            lowp vec3 rVec = 2.0 * dot(toLight, norm) * norm - toLight;
-            lowp float specCoeff = dot(toEye, rVec);
-            if(specCoeff > 0.0) {
-                color += specularCol * pow(specCoeff, n);
+
+            lowp float diffCoeff = dot(normVector, toLight);
+            if(diffCoeff > 0.0) {
+                color += diffuseCol * diffCoeff;
             }
+            
+            lowp float specCoeff = dot(normVector, normalize(toEye + toLight));
+            if(specCoeff > 0.0) {
+                color += specularCol * pow(specCoeff,nVal);
+            }
+
+            color = min(color, vec3(1,1,1));
             
             gl_FragColor = vec4(color, 1.0);
         }
@@ -209,34 +225,32 @@ function setupShaders() {
     // define vertex shader in essl using es6 template strings
     var vShaderCode = `
         attribute vec3 vertexPosition;
+        varying lowp vec3 vertexPos;
         
-        uniform highp vec3 eye;
-        uniform highp vec3 up; // direction, not point
-        uniform highp vec3 lookat; // direction, not point
+        uniform lowp vec3 eye; // location
+        uniform highp vec3 up; // direction
+        uniform highp vec3 lookat; // direction
         
         uniform float windowDist;
         uniform float left;
         uniform float right;
         uniform float bottom;
         uniform float top;
-        
         uniform float near;
         uniform float far;
 
         attribute vec3 diffuseColor;
-        attribute vec3 ambientColor;
-        attribute vec3 specularColor;
-        attribute float nVal;
-        attribute vec3 normal;
         varying highp vec3 diffuseCol;
+        attribute vec3 ambientColor;
         varying highp vec3 ambientCol;
+        attribute vec3 specularColor;
         varying highp vec3 specularCol;
-        varying highp float n;
-        varying highp vec3 norm;
-        varying highp vec3 toLight;
-        varying highp vec3 toEye;
+        attribute float n;
+        varying highp float nVal;
+        attribute vec3 normal;
+        varying highp vec3 norm; // direction
 
-        uniform vec3 lightPos;
+        uniform vec3 lightPos; // location
 
         void main(void) {
             // Perspective viewing transform.
@@ -256,14 +270,14 @@ function setupShaders() {
             ) * 2.0 - 1.0;
             
             gl_Position = vec4(clippedPosition, 1.0); // use the altered position
-
+            
             diffuseCol = diffuseColor;
             ambientCol = ambientColor;
             specularCol = specularColor;
-            n = nVal;
+            nVal = n;
             norm = normal;
-            toLight = lightPos - vertexPosition;
-            toEye = eye - vertexPosition;
+
+            vertexPos = vertexPosition;
         }
     `;
     
@@ -306,6 +320,9 @@ function setupShaders() {
                 specularColorAttrib = // get pointer to specular color shader input
                     gl.getAttribLocation(shaderProgram, "specularColor");
                 gl.enableVertexAttribArray(specularColorAttrib); // input to shader from array
+                nAttrib = // get pointer to specular exponent shader input
+                    gl.getAttribLocation(shaderProgram, "n");
+                gl.enableVertexAttribArray(nAttrib); // input to shader from array
                 normalAttrib = // get pointer to normal vector shader input
                     gl.getAttribLocation(shaderProgram, "normal");
                 gl.enableVertexAttribArray(normalAttrib); // input to shader from array
@@ -316,6 +333,8 @@ function setupShaders() {
                     gl.getUniformLocation(shaderProgram, "up");
                 lookatUniform = // get pointer to lookat vector
                     gl.getUniformLocation(shaderProgram, "lookat");
+                lightPosUniform = // get pointer to lightPos vector
+                    gl.getUniformLocation(shaderProgram, "lightPos");
 
                 windowDistUniform = // get pointer to windowDist value
                     gl.getUniformLocation(shaderProgram, "windowDist");
@@ -327,7 +346,6 @@ function setupShaders() {
                     gl.getUniformLocation(shaderProgram, "bottom");
                 topUniform = // get pointer to top value
                     gl.getUniformLocation(shaderProgram, "top");
-                
                 nearUniform = // get pointer to near value
                     gl.getUniformLocation(shaderProgram, "near");
                 farUniform = // get pointer to far value
@@ -345,26 +363,14 @@ function setupShaders() {
         setTimeout(alterPosition, 2000);
     }, 2000); // switch flag value every 2 seconds
     eye=[0.5,0.5,-0.5];
-    upArray=[0,1,0];
-    lookatArray=[0,0,1];
-    
-    lookat=vec3.fromValues(...lookatArray);
-    vec3.normalize(lookat,lookat);
-    
-    up=vec3.fromValues(...upArray);
-    temp=vec3.create();
-    vec3.dot(temp,up,lookat)
-    up=vec3.sub(up,up,temp);
-    vec3.normalize(up,up);
-
-    right=vec3.create();
-    vec3.cross(right,lookat,up);
+    up=[0,1,0];
+    lookat=[0,0,1];
+    lightPos=[-0.5,1.5,-0.5];
 } // end setup shaders
 var bgColor = 0;
 // render the loaded model
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // clear frame/depth buffers
-    bgColor = (bgColor < 1) ? (bgColor + 0.001) : 0;
     gl.clearColor(bgColor, 0, 0, 1.0);
     requestAnimationFrame(renderTriangles);
     // vertex buffer: activate and feed into vertex shader
@@ -379,6 +385,9 @@ function renderTriangles() {
     // specular color buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,specularColorBuffer); // activate
     gl.vertexAttribPointer(specularColorAttrib,3,gl.FLOAT,false,0,0); // feed
+    // specular exponent buffer: activate and feed into vertex shader
+    gl.bindBuffer(gl.ARRAY_BUFFER,nBuffer); // activate
+    gl.vertexAttribPointer(nAttrib,1,gl.FLOAT,false,0,0); // feed
     // normal buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffer); // activate
     gl.vertexAttribPointer(normalAttrib,3,gl.FLOAT,false,0,0); // feed
@@ -392,6 +401,8 @@ function renderTriangles() {
     gl.uniform3fv(upUniform, up); // feed
     // lookat vector
     gl.uniform3fv(lookatUniform, lookat); // feed
+    // lightPos vector
+    gl.uniform3fv(lightPosUniform, lightPos); // feed
     
     // windowDist value
     gl.uniform1f(windowDistUniform, 0.5); // feed
